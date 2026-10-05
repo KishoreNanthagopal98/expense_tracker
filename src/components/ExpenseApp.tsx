@@ -3,30 +3,18 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import DatePicker from "@/components/DatePicker";
-import { AppUser, CATEGORIES, currentMonth, Expense, ExpenseInput, PAYMENT_METHODS } from "@/lib/types";
+import { AppUser, CATEGORIES, Expense, ExpenseInput, PAYMENT_METHODS } from "@/lib/types";
 
 const CURRENCY = process.env.NEXT_PUBLIC_CURRENCY || "INR";
 const money = new Intl.NumberFormat(undefined, { style: "currency", currency: CURRENCY, maximumFractionDigits: 2 });
 
-function shiftMonth(month: string, delta: number) {
-  const [y, m] = month.split("-").map(Number);
-  const d = new Date(y, m - 1 + delta, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+function defaultDate() {
+  return new Date().toISOString().slice(0, 10);
 }
 
-function monthLabel(month: string) {
-  const [y, m] = month.split("-").map(Number);
-  return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
-}
-
-function defaultDate(month: string) {
-  const today = new Date().toISOString().slice(0, 10);
-  return today.startsWith(month) ? today : `${month}-01`;
-}
-
-function blankForm(month: string, userId = ""): ExpenseInput {
+function blankForm(userId = ""): ExpenseInput {
   return {
-    date: defaultDate(month),
+    date: defaultDate(),
     description: "",
     category: CATEGORIES[0],
     amount: 0,
@@ -40,15 +28,22 @@ function blankForm(month: string, userId = ""): ExpenseInput {
 const input =
   "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-700 dark:bg-zinc-900";
 
+function sinceLastIncome(all: Expense[]) {
+  const lastIncome = [...all]
+    .filter((e) => e.type === "Income")
+    .sort((a, b) => b.date.localeCompare(a.date))[0];
+  if (!lastIncome) return { lastIncome: null as Expense | null, entries: all };
+  const entries = all.filter((e) => e.date >= lastIncome.date);
+  return { lastIncome, entries };
+}
+
 export default function ExpenseApp() {
-  const [month, setMonth] = useState(currentMonth);
-  const [months, setMonths] = useState<string[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [setupNeeded, setSetupNeeded] = useState(false);
-  const [form, setForm] = useState<ExpenseInput>(() => blankForm(currentMonth()));
+  const [form, setForm] = useState<ExpenseInput>(() => blankForm());
   const [amountText, setAmountText] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filter, setFilter] = useState("All");
@@ -56,17 +51,15 @@ export default function ExpenseApp() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [users, setUsers] = useState<AppUser[]>([]);
 
-  const load = useCallback(async (m: string) => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [expRes, monthRes, usersRes] = await Promise.all([
-        fetch(`/api/expenses?month=${m}`, { cache: "no-store" }),
-        fetch(`/api/months`, { cache: "no-store" }),
+      const [expRes, usersRes] = await Promise.all([
+        fetch(`/api/expenses`, { cache: "no-store" }),
         fetch(`/api/users`, { cache: "no-store" }),
       ]);
       const expData = await expRes.json();
-      const monthData = await monthRes.json();
       const usersData = await usersRes.json();
       if (!expRes.ok) {
         setSetupNeeded(Boolean(expData.setup));
@@ -75,7 +68,6 @@ export default function ExpenseApp() {
       if (!usersRes.ok) throw new Error(usersData.error ?? "Failed to load users");
       setSetupNeeded(false);
       setExpenses(expData.expenses);
-      setMonths(monthData.months ?? []);
       setUsers(usersData.users ?? []);
     } catch (e) {
       setExpenses([]);
@@ -86,9 +78,8 @@ export default function ExpenseApp() {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetching data for the selected month
-    load(month);
-  }, [month, load]);
+    load();
+  }, [load]);
 
   useEffect(() => {
     if (!editingId && users.length > 0 && !form.userId) {
@@ -96,14 +87,9 @@ export default function ExpenseApp() {
     }
   }, [users, editingId, form.userId]);
 
-  function changeMonth(m: string) {
-    setMonth(m);
-    cancelEdit(m);
-  }
-
-  function cancelEdit(m = month) {
+  function cancelEdit() {
     setEditingId(null);
-    setForm(blankForm(m, users[0]?.id ?? ""));
+    setForm(blankForm(users[0]?.id ?? ""));
     setAmountText("");
   }
 
@@ -117,7 +103,7 @@ export default function ExpenseApp() {
       paymentMethod: e.paymentMethod,
       notes: e.notes,
       userId: e.userId,
-      date: /^\d{4}-\d{2}-\d{2}$/.test(e.date) ? e.date : defaultDate(month) });
+      date: /^\d{4}-\d{2}-\d{2}$/.test(e.date) ? e.date : defaultDate() });
     setAmountText(String(e.amount));
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -131,14 +117,14 @@ export default function ExpenseApp() {
       const res = await fetch("/api/expenses", {
         method: editingId ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editingId ? { ...payload, id: editingId, month } : payload),
+        body: JSON.stringify(
+          editingId ? { ...payload, id: editingId, month: form.date.slice(0, 7) } : payload
+        ),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      const targetMonth = form.date.slice(0, 7);
-      cancelEdit(targetMonth);
-      if (targetMonth !== month) setMonth(targetMonth);
-      else await load(month);
+      cancelEdit();
+      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
     } finally {
@@ -151,21 +137,22 @@ export default function ExpenseApp() {
     setError(null);
     const prev = expenses;
     setExpenses((list) => list.filter((e) => e.id !== id));
-    const res = await fetch(`/api/expenses?month=${month}&id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    const res = await fetch(`/api/expenses?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     if (!res.ok) {
       setExpenses(prev);
       setError((await res.json()).error ?? "Failed to delete");
     } else {
-      // Row numbers shift after a delete, so re-read to keep manual-row IDs accurate.
-      load(month);
+      load();
     }
   }
+
+  const { lastIncome, entries: periodExpenses } = useMemo(() => sinceLastIncome(expenses), [expenses]);
 
   const totals = useMemo(() => {
     let income = 0;
     let spent = 0;
     const byCategory = new Map<string, number>();
-    for (const e of expenses) {
+    for (const e of periodExpenses) {
       if (e.type === "Income") income += e.amount;
       else {
         spent += e.amount;
@@ -174,45 +161,32 @@ export default function ExpenseApp() {
     }
     const categories = [...byCategory.entries()].sort((a, b) => b[1] - a[1]);
     return { income, spent, balance: income - spent, categories };
-  }, [expenses]);
+  }, [periodExpenses]);
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return expenses
+    return periodExpenses
       .filter((e) => filter === "All" || e.category === filter || e.type === filter)
       .filter((e) => !q || `${e.description} ${e.notes} ${e.category} ${e.user}`.toLowerCase().includes(q))
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [expenses, filter, search]);
+  }, [periodExpenses, filter, search]);
 
-  const monthOptions = useMemo(() => [...new Set([month, currentMonth(), ...months])].sort().reverse(), [months, month]);
-  const usedCategories = useMemo(() => [...new Set(expenses.map((e) => e.category))].sort(), [expenses]);
+  const usedCategories = useMemo(() => [...new Set(periodExpenses.map((e) => e.category))].sort(), [periodExpenses]);
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{monthLabel(month)}</h1>
-          <p className="text-sm text-zinc-500">Monthly overview</p>
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Add Expense / Income</h1>
+          <p className="text-sm text-zinc-500">
+            {lastIncome
+              ? `Showing entries since last income · ${lastIncome.date} · ${lastIncome.description}`
+              : "Showing all entries (no income recorded yet)"}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => changeMonth(shiftMonth(month, -1))} className="rounded-lg border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800" aria-label="Previous month">
-            ←
-          </button>
-          <select value={month} onChange={(e) => changeMonth(e.target.value)} className={`${input} w-48`}>
-            {monthOptions.map((m) => (
-              <option key={m} value={m}>
-                {monthLabel(m)}
-                {months.includes(m) ? "" : " (new)"}
-              </option>
-            ))}
-          </select>
-          <button onClick={() => changeMonth(shiftMonth(month, 1))} className="rounded-lg border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800" aria-label="Next month">
-            →
-          </button>
-          <button onClick={() => load(month)} className="rounded-lg border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800" title="Reload">
-            ↻
-          </button>
-        </div>
+        <button onClick={load} className="rounded-lg border border-zinc-300 px-3 py-2 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800" title="Reload">
+          ↻ Reload
+        </button>
       </div>
 
       {setupNeeded && <SetupNotice message={error} />}
@@ -334,7 +308,7 @@ export default function ExpenseApp() {
         <section className="min-w-0 rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
           <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 p-4 dark:border-zinc-800">
             <h2 className="mr-auto font-medium">
-              {monthLabel(month)} <span className="text-sm font-normal text-zinc-500">· {expenses.length} entries</span>
+              Current period <span className="text-sm font-normal text-zinc-500">· {periodExpenses.length} entries</span>
             </h2>
             <input className={`${input} w-40`} placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} />
             <select className={`${input} w-40`} value={filter} onChange={(e) => setFilter(e.target.value)}>
@@ -351,7 +325,7 @@ export default function ExpenseApp() {
             <p className="p-8 text-center text-sm text-zinc-500">Loading expenses…</p>
           ) : visible.length === 0 ? (
             <p className="p-8 text-center text-sm text-zinc-500">
-              {expenses.length === 0 ? "Nothing recorded for this month yet." : "No entries match your filter."}
+              {periodExpenses.length === 0 ? "No entries since the last income yet." : "No entries match your filter."}
             </p>
           ) : (
             <div className="overflow-x-auto">
