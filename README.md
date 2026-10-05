@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Expense Tracker
 
-## Getting Started
+A Next.js app for tracking monthly expenses and income, backed by **Supabase Postgres**.
 
-First, run the development server:
+Entries are stored in a single `expenses` table and grouped by month from each entry's date (`YYYY-MM`).
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Setup
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+1. **Create a Supabase project** at [supabase.com/dashboard](https://supabase.com/dashboard).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+2. **Copy env vars** from **Project Settings → API**:
+   ```bash
+   cp .env.example .env.local
+   ```
+   Fill in:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY` (server-only — never prefix with `NEXT_PUBLIC_`)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+3. **Create the database table** — choose one:
 
-## Learn More
+   **Option A — automatic (recommended):** Add your Postgres connection string as `SUPABASE_DB_URL` in `.env.local`  
+   (**Project Settings → Database → Connection string → URI**, Transaction pooler).  
+   The app runs `CREATE TABLE IF NOT EXISTS` on first API request.
 
-To learn more about Next.js, take a look at the following resources:
+   **Option B — manual:** Open the **SQL Editor** in Supabase and run `supabase/migrations/0001_create_expenses.sql`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+4. **Run the app:**
+   ```bash
+   npm install
+   npm run dev
+   ```
+   Open http://localhost:3000.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Database schema
 
-## Deploy on Vercel
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | Primary key |
+| date | date | `YYYY-MM-DD` |
+| description | text | Required |
+| category | text | Default `Other` |
+| amount | numeric | Must be > 0 |
+| type | text | `Expense` or `Income` |
+| payment_method | text | e.g. UPI, Cash |
+| notes | text | Optional |
+| created_at | timestamptz | Set automatically |
+| updated_at | timestamptz | Updated on edit |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Row Level Security is enabled. API routes use the service role key on the server.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Features
+
+- Switch months with the arrows or the dropdown
+- Add, edit and delete entries (saved to Supabase immediately)
+- Change an entry's date to another month and it moves automatically
+- Income, expense and balance totals, plus a spending-by-category breakdown
+- Search and filter by category or type
+- Set the display currency with `NEXT_PUBLIC_CURRENCY` (default `INR`)
+
+## Code layout
+
+- `src/lib/supabase/server.ts`: Supabase server client
+- `src/lib/db/schema.ts`: `CREATE TABLE IF NOT EXISTS` bootstrap
+- `src/lib/expenses.ts`: Database reads and writes (server only)
+- `src/app/api/expenses/route.ts`: GET/POST/PUT/DELETE for entries
+- `src/app/api/months/route.ts`: Lists months that have entries
+- `src/components/ExpenseApp.tsx`: The UI
+- `supabase/migrations/0001_create_expenses.sql`: Manual migration SQL
+
+> Keep `.env.local` private. The service role key and database URL grant full access to your project.
