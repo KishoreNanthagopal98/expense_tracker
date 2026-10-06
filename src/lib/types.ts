@@ -20,6 +20,21 @@ export interface Expense {
 
 export type ExpenseInput = Omit<Expense, "id" | "user">;
 
+export type SavingType = "Deposit" | "Withdrawal";
+
+export interface Saving {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+  type: SavingType;
+  userId: string;
+  user: string;
+  notes: string;
+}
+
+export type SavingInput = Omit<Saving, "id" | "user">;
+
 export const CATEGORIES = [
   "Food & Dining",
   "Groceries",

@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { requireSession } from "@/lib/auth";
 import { addUser, deleteUser, listUsers, SetupError } from "@/lib/users";
 
 function fail(err: unknown) {
@@ -19,6 +20,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireSession();
+  if (auth instanceof Response) return auth;
   try {
     const body = await req.json();
     const name = String(body.name ?? "").trim();
@@ -30,6 +33,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const auth = await requireSession();
+  if (auth instanceof Response) return auth;
   try {
     const id = req.nextUrl.searchParams.get("id") ?? "";
     if (!id) throw new Error("User id is required");

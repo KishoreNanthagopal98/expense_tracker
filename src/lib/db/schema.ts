@@ -4,23 +4,45 @@ import { getSupabaseAdmin, SetupError } from "@/lib/supabase/server";
 
 const EXPENSES_TABLE = "expenses";
 const USERS_TABLE = "users";
+const SAVINGS_TABLE = "savings";
 
 const USERS_SCHEMA = [
   `CREATE TABLE IF NOT EXISTS public.${USERS_TABLE} (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     name text NOT NULL UNIQUE,
+    password text,
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
   `ALTER TABLE public.${USERS_TABLE} ENABLE ROW LEVEL SECURITY`,
+  `ALTER TABLE public.${USERS_TABLE} ADD COLUMN IF NOT EXISTS password text`,
+];
+
+const SAVINGS_SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS public.${SAVINGS_TABLE} (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    date date NOT NULL,
+    description text NOT NULL,
+    amount numeric(12, 2) NOT NULL CHECK (amount > 0),
+    type text NOT NULL DEFAULT 'Deposit' CHECK (type IN ('Deposit', 'Withdrawal')),
+    user_id uuid REFERENCES public.${USERS_TABLE}(id),
+    notes text NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_savings_date ON public.${SAVINGS_TABLE} (date DESC)`,
+  `ALTER TABLE public.${SAVINGS_TABLE} ENABLE ROW LEVEL SECURITY`,
 ];
 
 const API_ACCESS_STATEMENTS = [
   `GRANT SELECT, INSERT, UPDATE, DELETE ON public.${USERS_TABLE} TO anon, authenticated`,
   `GRANT SELECT, INSERT, UPDATE, DELETE ON public.${EXPENSES_TABLE} TO anon, authenticated`,
+  `GRANT SELECT, INSERT, UPDATE, DELETE ON public.${SAVINGS_TABLE} TO anon, authenticated`,
   `DROP POLICY IF EXISTS "public users access" ON public.${USERS_TABLE}`,
   `CREATE POLICY "public users access" ON public.${USERS_TABLE} FOR ALL TO anon, authenticated USING (true) WITH CHECK (true)`,
   `DROP POLICY IF EXISTS "public expenses access" ON public.${EXPENSES_TABLE}`,
   `CREATE POLICY "public expenses access" ON public.${EXPENSES_TABLE} FOR ALL TO anon, authenticated USING (true) WITH CHECK (true)`,
+  `DROP POLICY IF EXISTS "public savings access" ON public.${SAVINGS_TABLE}`,
+  `CREATE POLICY "public savings access" ON public.${SAVINGS_TABLE} FOR ALL TO anon, authenticated USING (true) WITH CHECK (true)`,
 ];
 
 const SCHEMA_STATEMENTS = [
@@ -42,6 +64,7 @@ const SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS idx_expenses_user_id ON public.${EXPENSES_TABLE} (user_id)`,
   `ALTER TABLE public.${EXPENSES_TABLE} ENABLE ROW LEVEL SECURITY`,
   `INSERT INTO public.${USERS_TABLE} (name) VALUES ('Kishore'), ('Pavithra') ON CONFLICT (name) DO NOTHING`,
+  ...SAVINGS_SCHEMA,
   ...API_ACCESS_STATEMENTS,
 ];
 
@@ -50,6 +73,7 @@ const MIGRATION_STATEMENTS = [
   `ALTER TABLE public.${EXPENSES_TABLE} ADD COLUMN IF NOT EXISTS user_id uuid REFERENCES public.${USERS_TABLE}(id)`,
   `CREATE INDEX IF NOT EXISTS idx_expenses_user_id ON public.${EXPENSES_TABLE} (user_id)`,
   `INSERT INTO public.${USERS_TABLE} (name) VALUES ('Kishore'), ('Pavithra') ON CONFLICT (name) DO NOTHING`,
+  ...SAVINGS_SCHEMA,
   ...API_ACCESS_STATEMENTS,
 ];
 

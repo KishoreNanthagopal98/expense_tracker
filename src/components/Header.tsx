@@ -3,15 +3,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useAuth } from "@/components/AuthProvider";
 
 const NAV = [
   { href: "/", label: "Add Expense/Income" },
   { href: "/expenses", label: "View Expenses/Income" },
+  { href: "/savings", label: "Savings" },
   { href: "/settings", label: "Settings" },
 ];
 
 export default function Header() {
   const pathname = usePathname();
+  const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -38,7 +41,8 @@ export default function Header() {
           Expense Tracker
         </Link>
 
-        <nav className="hidden items-center gap-1 md:flex" aria-label="Main">
+        <div className="hidden items-center gap-3 md:flex">
+        <nav className="flex items-center gap-1" aria-label="Main">
           {NAV.map(({ href, label }) => {
             const active = pathname === href;
             return (
@@ -56,6 +60,19 @@ export default function Header() {
             );
           })}
         </nav>
+        {user && (
+          <div className="flex items-center gap-2 border-l border-zinc-200 pl-3 dark:border-zinc-800">
+            <span className="text-sm text-zinc-600 dark:text-zinc-400">{user.userName}</span>
+            <button
+              type="button"
+              onClick={() => logout()}
+              className="rounded-lg px-2 py-1 text-sm text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            >
+              Sign out
+            </button>
+          </div>
+        )}
+        </div>
 
         <button
           type="button"

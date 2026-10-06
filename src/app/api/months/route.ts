@@ -1,6 +1,9 @@
+import { requireSession } from "@/lib/auth";
 import { listMonths, SetupError } from "@/lib/expenses";
 
 export async function GET() {
+  const auth = await requireSession();
+  if (auth instanceof Response) return auth;
   try {
     return Response.json({ months: await listMonths() });
   } catch (err) {

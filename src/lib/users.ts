@@ -1,11 +1,12 @@
 import "server-only";
+import { verifyPassword } from "@/lib/auth";
 import { ensureDbReady } from "@/lib/db/schema";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { AppUser } from "@/lib/types";
 
 export { SetupError } from "@/lib/supabase/server";
 
-type UserRow = { id: string; name: string };
+type UserRow = { id: string; name: string; password?: string | null };
 
 function toUser(row: UserRow): AppUser {
   return { id: row.id, name: row.name };
@@ -31,6 +32,17 @@ export async function addUser(name: string): Promise<AppUser> {
     throw new Error(error.message);
   }
   return toUser(data as UserRow);
+}
+
+export async function verifyUserPassword(userId: string, password: string): Promise<AppUser | null> {
+  await ensureDbReady();
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.from("users").select("id, name, password").eq("id", userId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  const row = data as UserRow;
+  if (!verifyPassword(password, row.password)) return null;
+  return toUser(row);
 }
 
 export async function deleteUser(id: string): Promise<void> {
