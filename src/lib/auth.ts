@@ -4,6 +4,8 @@ import { cookies } from "next/headers";
 import {
   SESSION_COOKIE,
   SessionUser,
+  SAVINGS_UNLOCK_HEADER,
+  verifySavingsUnlockToken,
   verifySessionToken,
 } from "@/lib/session";
 
@@ -42,4 +44,18 @@ export async function requireSession(): Promise<SessionUser | Response> {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
   return user;
+}
+
+export async function requireSavingsAccess(req: Request): Promise<SessionUser | Response> {
+  const session = await requireSession();
+  if (session instanceof Response) return session;
+
+  const token = req.headers.get(SAVINGS_UNLOCK_HEADER);
+  if (!verifySavingsUnlockToken(token, session.userId)) {
+    return Response.json(
+      { error: "Enter your password to view savings", savingsLocked: true },
+      { status: 403 }
+    );
+  }
+  return session;
 }

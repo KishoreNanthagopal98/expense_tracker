@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import DatePicker from "@/components/DatePicker";
+import {
+  clearSavingsUnlockToken,
+  savingsUnlockHeaders,
+} from "@/lib/savings-unlock-client";
 import { AppUser, Saving, SavingInput } from "@/lib/types";
 
 const CURRENCY = process.env.NEXT_PUBLIC_CURRENCY || "INR";
@@ -39,9 +43,17 @@ export default function SavingsPage() {
     setError(null);
     try {
       const [savRes, usersRes] = await Promise.all([
-        fetch("/api/savings", { cache: "no-store" }),
+        fetch("/api/savings", { cache: "no-store", headers: savingsUnlockHeaders() }),
         fetch("/api/users", { cache: "no-store" }),
       ]);
+      if (savRes.status === 403) {
+        const savData = await savRes.json();
+        if (savData.savingsLocked) {
+          clearSavingsUnlockToken();
+          window.location.reload();
+          return;
+        }
+      }
       const savData = await savRes.json();
       const usersData = await usersRes.json();
       if (!savRes.ok) throw new Error(savData.error);
@@ -96,7 +108,7 @@ export default function SavingsPage() {
       const payload = { ...form, amount: Number(amountText) };
       const res = await fetch("/api/savings", {
         method: editingId ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...savingsUnlockHeaders() },
         body: JSON.stringify(editingId ? { ...payload, id: editingId } : payload),
       });
       const data = await res.json();
@@ -113,7 +125,10 @@ export default function SavingsPage() {
   async function remove(id: string) {
     setConfirmDelete(null);
     setError(null);
-    const res = await fetch(`/api/savings?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    const res = await fetch(`/api/savings?id=${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: savingsUnlockHeaders(),
+    });
     const data = await res.json();
     if (!res.ok) {
       setError(data.error ?? "Failed to delete");

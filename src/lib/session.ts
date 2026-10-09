@@ -62,3 +62,37 @@ export function sessionCookieOptions(expires: Date) {
     expires,
   };
 }
+
+export const SAVINGS_UNLOCK_HEADER = "x-savings-unlock";
+
+type SavingsUnlockPayload = {
+  userId: string;
+  exp: number;
+  p: "savings";
+};
+
+export function createSavingsUnlockToken(userId: string): string {
+  const exp = Date.now() + 12 * 60 * 60 * 1000;
+  const payload = Buffer.from(JSON.stringify({ userId, exp, p: "savings" } satisfies SavingsUnlockPayload), "utf8").toString(
+    "base64url"
+  );
+  return `${payload}.${sign(payload)}`;
+}
+
+export function verifySavingsUnlockToken(token: string | null | undefined, userId: string): boolean {
+  if (!token) return false;
+  const [payload, signature] = token.split(".");
+  if (!payload || !signature) return false;
+  const expected = sign(payload);
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) return false;
+
+  try {
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as SavingsUnlockPayload;
+    if (data.p !== "savings" || data.userId !== userId || !data.exp || data.exp < Date.now()) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}

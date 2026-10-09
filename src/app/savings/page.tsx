@@ -1,5 +1,10 @@
 import SavingsPage from "@/components/SavingsPage";
+import SavingsPasswordGate from "@/components/SavingsPasswordGate";
 
 export default function Savings() {
-  return <SavingsPage />;
+  return (
+    <SavingsPasswordGate>
+      <SavingsPage />
+    </SavingsPasswordGate>
+  );
 }
